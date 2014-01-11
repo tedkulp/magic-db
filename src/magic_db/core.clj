@@ -11,8 +11,16 @@
 (defn get-parsed-card-html [card-id]
   (as-hickory (parse (pull-html-for-card card-id))))
 
-(defn add-id-prefix [string]
-  (str "ctl00_ctl00_ctl00_MainContent_SubContent_SubContent_" string))
+(defn side-indicator [side]
+  (case side
+    :front 0
+    :back  1))
+
+(defn side-id [side]
+  (s/attr :id #(.endsWith % (str "cardComponent" (side-indicator side)))))
+
+(defn id-prefix [string]
+  (s/attr :id #(.endsWith % string)))
 
 (defn select-content [parsed-html & args]
   (s/select
@@ -28,30 +36,50 @@
       x
       (clojure.string/trim x))))
 
-(defn extract-flavor [content]
-  (remove map? (map first (map :content (select-content content (s/id (add-id-prefix "FlavorText")) (s/or (s/class "cardtextbox") (s/tag "i")))))))
+(defn extract-flavor [content side]
+  ; Only grab the immediately nested text items. Ignore nested 'i', 'strong', etc tags as they just duplicate the text
+  (remove map?
+    (map first
+      (map :content (select-content content (side-id side) (id-prefix "FlavorText") (s/or (s/class "cardtextbox") (s/tag "i")))))))
 
-(defn convert-number [input]
-  (let [x (read-string input)]
-    (if (nil? x)
-      input
-      x)))
+(defn extract-set-from-side [content side]
+  (first
+    (:content
+      (last
+        (s/select
+          (s/descendant
+            (s/attr :id #(.endsWith % "setRow")) (s/tag "a")) content)))))
 
-(defn extract-data [card-id]
-  (let [parsed-html (get-parsed-card-html card-id)]
+(defn has-back? [parsed-html]
+  (>
+   (count
+     (s/select
+       (s/descendant
+         (s/attr :id #(.endsWith % "subtitleDisplay"))) parsed-html)) 1))
+
+(defn extract-side-data [card-id side parsed-html]
   {
-   ; :html parsed-html
-   :id card-id
-   :name (extract-first-content (select-content parsed-html (s/id (add-id-prefix "nameRow")) (s/class "value")))
-   :type (extract-first-content (select-content parsed-html (s/id (add-id-prefix "typeRow")) (s/class "value")))
-   :converted (convert-number (extract-first-content (select-content parsed-html (s/id (add-id-prefix "cmcRow")) (s/class "value"))))
-   :number (convert-number (extract-first-content (select-content parsed-html (s/id (add-id-prefix "numberRow")) (s/class "value"))))
-   :pt (extract-first-content (select-content parsed-html (s/id (add-id-prefix "ptRow")) (s/class "value")))
-   :rarity (extract-first-content (select-content parsed-html (s/id (add-id-prefix "rarityRow")) (s/class "value") (s/tag "span")))
-   :artist (extract-first-content (select-content parsed-html (s/id (add-id-prefix "ArtistCredit")) (s/tag "a")))
-   :flavor (extract-flavor parsed-html)
-  }))
+   :name (extract-first-content (select-content parsed-html (side-id side) (id-prefix "nameRow") (s/class "value")))
+   :type (extract-first-content (select-content parsed-html (side-id side) (id-prefix "typeRow") (s/class "value")))
+   :converted (extract-first-content (select-content parsed-html (side-id side) (id-prefix "cmcRow") (s/class "value")))
+   :number (extract-first-content (select-content parsed-html (side-id side) (id-prefix "numberRow") (s/class "value")))
+   :pt (extract-first-content (select-content parsed-html (side-id side) (id-prefix "ptRow") (s/class "value")))
+   :rarity (extract-first-content (select-content parsed-html (side-id side) (id-prefix "rarityRow") (s/class "value") (s/tag "span")))
+   :artist (extract-first-content (select-content parsed-html (side-id side) (id-prefix "ArtistCredit") (s/tag "a")))
+   :flavor (extract-flavor parsed-html side)
+  })
+
+(defn get-card-data [card-id]
+  (let [
+      parsed-html (get-parsed-card-html card-id)
+      result {:id card-id :setname (extract-set-from-side parsed-html :front) :front (extract-side-data card-id :front parsed-html)}
+    ]
+    (if (has-back? parsed-html)
+      (assoc result :back (extract-side-data card-id :back parsed-html))
+      result)))
 
 (defn -main []
-  (println (json/write-str (extract-data 135194)))
-  (println (json/write-str (extract-data 106426))))
+  (println (json/write-str (get-card-data 135194)))
+  (println (json/write-str (get-card-data 106426)))
+  (println (json/write-str (get-card-data 242509)))
+  (println (json/write-str (get-card-data 107387))))
