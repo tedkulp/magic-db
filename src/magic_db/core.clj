@@ -42,6 +42,23 @@
     (map first
       (map :content (select-content content (side-id side) (id-prefix "FlavorText") (s/or (s/class "cardtextbox") (s/tag "i")))))))
 
+(defn get-node-content [item]
+  (cond
+    (string? item) item
+    (not (nil?
+      (:alt (:attrs item)))) (str "{{" (:alt (:attrs item)) "}}")
+    :else nil))
+
+(defn get-text-lines [item]
+  (doall
+    (remove empty?
+      (remove nil?
+        (map get-node-content item)))))
+
+(defn extract-text [content side]
+  (let [tree (select-content content (side-id side) (id-prefix "textRow") (s/class "value") (s/class "cardtextbox"))]
+    (map #(apply str (interpose " " %)) (map get-text-lines (map :content tree)))))
+
 (defn extract-set-from-side [content side]
   (first
     (:content
@@ -66,6 +83,7 @@
    :pt (extract-first-content (select-content parsed-html (side-id side) (id-prefix "ptRow") (s/class "value")))
    :rarity (extract-first-content (select-content parsed-html (side-id side) (id-prefix "rarityRow") (s/class "value") (s/tag "span")))
    :artist (extract-first-content (select-content parsed-html (side-id side) (id-prefix "ArtistCredit") (s/tag "a")))
+   :text (extract-text parsed-html side)
    :flavor (extract-flavor parsed-html side)
   })
 
