@@ -15,6 +15,15 @@
     :front 0
     :back  1))
 
+(defn compress-string [coll]
+  (when-let [[f & r] (seq coll)]
+    (if (= f (first r))
+      (compress-string r)
+      (cons f (compress-string r)))))
+
+(defn clean-string [coll]
+  (apply str (compress-string (str/trim coll))))
+
 (defn side-id [side]
   (s/attr :id #(.endsWith % (str "cardComponent" (side-indicator side)))))
 
@@ -37,9 +46,10 @@
 
 (defn extract-flavor [content side]
   ; Only grab the immediately nested text items. Ignore nested 'i', 'strong', etc tags as they just duplicate the text
-  (remove map?
-    (map first
-      (map :content (select-content content (side-id side) (id-prefix "FlavorText") (s/or (s/class "cardtextbox") (s/tag "i")))))))
+  (map clean-string
+    (remove map?
+      (map first
+        (map :content (select-content content (side-id side) (id-prefix "FlavorText") (s/or (s/class "cardtextbox") (s/tag "i"))))))))
 
 (defn get-node-content [item]
   (cond
@@ -56,7 +66,7 @@
 
 (defn extract-text [content side]
   (let [tree (select-content content (side-id side) (id-prefix "textRow") (s/class "value") (s/class "cardtextbox"))]
-    (map #(apply str (interpose " " %)) (map get-text-lines (map :content tree)))))
+    (map clean-string (map #(apply str (interpose " " %)) (map get-text-lines (map :content tree))))))
 
 (defn extract-set-from-side [content side]
   (first
@@ -75,8 +85,8 @@
 
 (defn extract-side-data [card-id side parsed-html]
   {
-   :name (extract-first-content (select-content parsed-html (side-id side) (id-prefix "nameRow") (s/class "value")))
-   :type (extract-first-content (select-content parsed-html (side-id side) (id-prefix "typeRow") (s/class "value")))
+   :name (clean-string (extract-first-content (select-content parsed-html (side-id side) (id-prefix "nameRow") (s/class "value"))))
+   :type (clean-string (extract-first-content (select-content parsed-html (side-id side) (id-prefix "typeRow") (s/class "value"))))
    :converted (extract-first-content (select-content parsed-html (side-id side) (id-prefix "cmcRow") (s/class "value")))
    :number (extract-first-content (select-content parsed-html (side-id side) (id-prefix "numberRow") (s/class "value")))
    :pt (extract-first-content (select-content parsed-html (side-id side) (id-prefix "ptRow") (s/class "value")))
